@@ -67,7 +67,7 @@
     "prepublishOnly": "npm run validate:package"
   },
   "dependencies": {
-    "commander": "^13.1.0",
+    "commander": "^15.0.0",
     "fast-glob": "^3.3.2",
     "jiti": "^2.4.2",
     "micromatch": "^4.0.8",
