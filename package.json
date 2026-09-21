@@ -1,0 +1,92 @@
+{
+  "name": "@mohamedwaelgd/image-slim-cli",
+  "version": "0.1.0",
+  "description": "Fast, safe, framework-agnostic image asset optimization for Node.js projects.",
+  "keywords": [
+    "image",
+    "optimizer",
+    "compression",
+    "resize",
+    "webp",
+    "cli",
+    "typescript"
+  ],
+  "license": "MIT",
+  "author": "Mohamed Wael",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MohamedWaelGD/image-slim-cli.git"
+  },
+  "bugs": {
+    "url": "https://github.com/MohamedWaelGD/image-slim-cli/issues"
+  },
+  "homepage": "https://github.com/MohamedWaelGD/image-slim-cli#readme",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "image-slim": "dist/bin.js"
+  },
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "sideEffects": false,
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "audit:prod": "npm audit --omit=dev",
+    "validate:package": "npm run typecheck && npm run lint && npm run format:check && npm run test && npm run build && publint && npm pack --dry-run",
+    "prepublishOnly": "npm run validate:package"
+  },
+  "dependencies": {
+    "commander": "^13.1.0",
+    "fast-glob": "^3.3.2",
+    "jiti": "^2.4.2",
+    "micromatch": "^4.0.8",
+    "sharp": "^0.35.4"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.17.0",
+    "@types/micromatch": "^4.0.10",
+    "@types/node": "^22.10.5",
+    "eslint": "^9.17.0",
+    "eslint-config-prettier": "^9.1.0",
+    "globals": "^15.14.0",
+    "prettier": "^3.4.2",
+    "publint": "^0.3.2",
+    "tsup": "^8.3.5",
+    "typescript": "^5.7.2",
+    "typescript-eslint": "^8.19.1",
+    "vite": "^8.3.0",
+    "vitest": "^5.0.1"
+  },
+  "directories": {
+    "test": "tests"
+  }
+}
