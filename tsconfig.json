@@ -15,6 +15,7 @@
   "include": [
     "src",
     "tests",
+    "benchmarks",
     "tsup.config.ts",
     "vitest.config.ts",
     "eslint.config.js"

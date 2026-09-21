@@ -1,4 +1,4 @@
-import { stat } from "node:fs/promises";
+import { lstat, stat } from "node:fs/promises";
 import { isAbsolute, relative, resolve, sep } from "node:path";
 import fg from "fast-glob";
 import micromatch from "micromatch";
@@ -33,6 +33,14 @@ async function existingPath(
   }
 }
 
+async function isSymbolicLink(path: string): Promise<boolean> {
+  try {
+    return (await lstat(path)).isSymbolicLink();
+  } catch {
+    return false;
+  }
+}
+
 function extensionPatterns(extensions: string[]): string[] {
   return extensions.map((extension) => extension.replace(/^\./, ""));
 }
@@ -54,6 +62,7 @@ export async function discoverFiles(
 
   const extensions = normalizeExtensions(options.extensions);
   const ignore = options.exclude ?? [];
+  const followSymlinks = options.followSymlinks ?? false;
   const discovered: DiscoveredFile[] = [];
 
   for (const input of inputs) {
@@ -75,6 +84,12 @@ export async function discoverFiles(
           resolvedInput.slice(resolvedInput.lastIndexOf(".")).toLowerCase(),
         )
       ) {
+        if (!followSymlinks && (await isSymbolicLink(resolvedInput))) {
+          throw new ImageSlimError(
+            "UNSAFE_INPUT",
+            `Refusing to process a symbolic-link input: ${input}. Pass --follow-symlinks to opt in.`,
+          );
+        }
         discovered.push({
           absolutePath: resolvedInput,
           relativePath: makeRelativePath(
@@ -110,7 +125,7 @@ export async function discoverFiles(
       absolute: true,
       onlyFiles: true,
       unique: true,
-      followSymbolicLinks: options.followSymlinks ?? false,
+      followSymbolicLinks: followSymlinks,
       ignore: outputIgnore ? [...ignore, outputIgnore] : ignore,
     });
 
@@ -120,6 +135,7 @@ export async function discoverFiles(
         .slice(absolutePath.lastIndexOf("."))
         .toLowerCase();
       if (!extensions.includes(extension)) continue;
+      if (!followSymlinks && (await isSymbolicLink(absolutePath))) continue;
       discovered.push({
         absolutePath,
         relativePath: makeRelativePath(absolutePath, root),

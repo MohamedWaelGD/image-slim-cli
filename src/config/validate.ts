@@ -1,4 +1,5 @@
 import { ImageSlimError } from "../errors/image-slim-error";
+import { MAX_CONCURRENCY } from "./defaults";
 import type { ImageFormat, ImageSlimConfig } from "../types/public";
 
 const FORMATS = new Set<ImageFormat>(["original", "jpeg", "png", "webp"]);
@@ -84,6 +85,12 @@ export function validateConfig(config: ImageSlimConfig): void {
 
   if (config.concurrency !== undefined) {
     assertPositiveInteger("concurrency", config.concurrency);
+    if (config.concurrency > MAX_CONCURRENCY) {
+      throw new ImageSlimError(
+        "INVALID_OPTIONS",
+        `concurrency must be at most ${MAX_CONCURRENCY}.`,
+      );
+    }
   }
 
   for (const [name, value] of [
@@ -212,6 +219,13 @@ export function validateConfig(config: ImageSlimConfig): void {
     throw new ImageSlimError(
       "INVALID_OPTIONS",
       "--remove-originals requires --update-references to protect source references.",
+    );
+  }
+
+  if (config.removeOriginals && config.overwrite) {
+    throw new ImageSlimError(
+      "INVALID_OPTIONS",
+      "--remove-originals cannot be combined with --overwrite because replaced files cannot be rolled back.",
     );
   }
 }

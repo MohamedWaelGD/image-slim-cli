@@ -1,4 +1,4 @@
-import { access } from "node:fs/promises";
+import { access, lstat } from "node:fs/promises";
 import { resolve } from "node:path";
 import { ImageSlimError } from "../errors/image-slim-error";
 import {
@@ -59,27 +59,54 @@ export function planOutputs(
   });
 }
 
+export interface OutputPlanValidation {
+  /**
+   * Identities of outputs that already existed before this run. Used so
+   * transaction rollback never deletes a file the tool did not create.
+   */
+  preExisting: Set<string>;
+}
+
 export async function validateOutputPlan(
   files: PlannedFile[],
   options: ResolvedRunOptions,
-): Promise<void> {
+): Promise<OutputPlanValidation> {
+  const preExisting = new Set<string>();
+
+  if (!options.inPlace) {
+    try {
+      if ((await lstat(options.output)).isSymbolicLink()) {
+        throw new ImageSlimError(
+          "OUTPUT_UNSAFE",
+          `Refusing to write into a symbolic-link output directory: ${options.output}`,
+        );
+      }
+    } catch (error) {
+      if (error instanceof ImageSlimError) throw error;
+    }
+  }
+
   for (const file of files) {
     if (
       options.inPlace &&
       pathIdentity(file.outputPath) === pathIdentity(file.absolutePath)
     )
       continue;
-    if (!options.inPlace && (options.overwrite || options.dryRun)) continue;
+    const identity = pathIdentity(file.outputPath);
     try {
       await access(file.outputPath);
-      throw new ImageSlimError(
-        "OUTPUT_COLLISION",
-        options.inPlace
-          ? `Output already exists and cannot be replaced safely: ${file.outputPath}`
-          : `Output already exists. Use --overwrite to replace it: ${file.outputPath}`,
-      );
-    } catch (error) {
-      if (error instanceof ImageSlimError) throw error;
+      preExisting.add(identity);
+    } catch {
+      continue;
     }
+    if (!options.inPlace && (options.overwrite || options.dryRun)) continue;
+    throw new ImageSlimError(
+      "OUTPUT_COLLISION",
+      options.inPlace
+        ? `Output already exists and cannot be replaced safely: ${file.outputPath}`
+        : `Output already exists. Use --overwrite to replace it: ${file.outputPath}`,
+    );
   }
+
+  return { preExisting };
 }

@@ -38,6 +38,10 @@ interface Candidate {
   start: number;
   end: number;
   value: string;
+  /** True when the literal participates in string concatenation. */
+  dynamic?: boolean;
+  /** Trimmed source line used for diagnostics. */
+  expression?: string;
 }
 
 const IMAGE_VALUE = /\.(?:jpe?g|png|webp)(?:[?#][^\s"')>]+)?$/i;
@@ -49,13 +53,45 @@ function stripSuffix(value: string): string {
   return value.split(/[?#]/, 1)[0] ?? value;
 }
 
+function sourceExtension(sourcePath: string): string | undefined {
+  const extension = sourcePath
+    .slice(sourcePath.lastIndexOf(".") + 1)
+    .toLowerCase();
+  if (extension === "jpg" || extension === "jpeg") return "jpeg";
+  if (extension === "png" || extension === "webp") return extension;
+  return undefined;
+}
+
+function lineAround(content: string, index: number): string {
+  const start = content.lastIndexOf("\n", index) + 1;
+  const end = content.indexOf("\n", index);
+  const line = content.slice(start, end === -1 ? content.length : end).trim();
+  return line.length > 120 ? `${line.slice(0, 117)}...` : line;
+}
+
+function isConcatenated(content: string, start: number, end: number): boolean {
+  const before = content
+    .slice(Math.max(0, start - 5), start)
+    .replace(/['"`]$/, "");
+  const after = content.slice(end, end + 5).replace(/^['"`]/, "");
+  return /[+]\s*$/.test(before) || /^\s*\+/.test(after);
+}
+
 function candidatesFor(content: string, extension: string): Candidate[] {
   const candidates: Candidate[] = [];
   const push = (match: RegExpExecArray, valueIndex: number) => {
     const value = match[valueIndex];
     if (!value || !IMAGE_VALUE.test(value)) return;
     const start = match.index + match[0].indexOf(value);
-    candidates.push({ start, end: start + value.length, value });
+    const end = start + value.length;
+    const dynamic = isConcatenated(content, start, end);
+    candidates.push({
+      start,
+      end,
+      value,
+      dynamic: dynamic || undefined,
+      expression: dynamic ? lineAround(content, start) : undefined,
+    });
   };
 
   if (
@@ -121,6 +157,8 @@ function candidatesFor(content: string, extension: string): Candidate[] {
       /\b(?:src|srcSet|poster|href)\s*=\s*\{\s*(['"])([^'"]+)\1\s*\}/gi,
       /\b(?:url|image|asset)\s*[:=]\s*(['"`])([^'"`]+)\1/gi,
       /\b(?:const|let|var)\s+[A-Za-z_$][\w$]*\s*=\s*(['"`])([^'"`]+)\1/gi,
+      /\+[ \t]*(['"])([^'"\n]+)\1/gi,
+      /(['"])([^'"\n]+)\1[ \t]*\+/gi,
     ];
     for (const pattern of patterns) {
       for (
@@ -133,7 +171,13 @@ function candidatesFor(content: string, extension: string): Candidate[] {
     }
   }
 
-  return candidates;
+  const seen = new Set<string>();
+  return candidates.filter((candidate) => {
+    const key = `${candidate.start}:${candidate.end}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 function resolveReference(
@@ -174,6 +218,17 @@ function couldReferToTransformation(
   value: string,
   transformations: AssetTransformation[],
 ): boolean {
+  if (DYNAMIC_VALUE.test(value)) {
+    const match = /\.(jpe?g|png|webp)(?![a-z0-9])/i.exec(value);
+    if (!match) return false;
+    const extension = match[1]?.toLowerCase();
+    const normalized =
+      extension === "jpg" || extension === "jpeg" ? "jpeg" : extension;
+    return transformations.some(
+      (item) => sourceExtension(item.sourcePath) === normalized,
+    );
+  }
+
   const suffix = toPortablePath(
     stripSuffix(value).replace(/^\//, ""),
   ).toLowerCase();
@@ -266,6 +321,16 @@ export async function buildReferencePlan(
       content,
       absoluteFile.slice(absoluteFile.lastIndexOf(".")).toLowerCase(),
     )) {
+      if (candidate.dynamic) {
+        if (couldReferToTransformation(candidate.value, transformations)) {
+          unresolved.push({
+            filePath: absoluteFile,
+            value: candidate.expression ?? candidate.value,
+            reason: "dynamic",
+          });
+        }
+        continue;
+      }
       const resolved = resolveReference(
         candidate.value,
         absoluteFile,
@@ -309,7 +374,19 @@ export async function buildReferencePlan(
     });
   }
 
-  return { filesScanned: uniqueFiles.length, changes, unresolved };
+  const seenUnresolved = new Set<string>();
+  const dedupedUnresolved = unresolved.filter((reference) => {
+    const key = `${reference.filePath}\u0000${reference.value}\u0000${reference.reason}`;
+    if (seenUnresolved.has(key)) return false;
+    seenUnresolved.add(key);
+    return true;
+  });
+
+  return {
+    filesScanned: uniqueFiles.length,
+    changes,
+    unresolved: dedupedUnresolved,
+  };
 }
 
 function applyChanges(content: string, changes: ReferenceChange[]): string {
@@ -332,6 +409,7 @@ function applyChanges(content: string, changes: ReferenceChange[]): string {
 export async function applyReferencePlan(
   plan: ReferencePlan,
   dryRun: boolean,
+  boundary?: string,
 ): Promise<AppliedReferencePlan> {
   if (dryRun) {
     return { changed: plan.changes.length, rollback: async () => undefined };
@@ -346,7 +424,7 @@ export async function applyReferencePlan(
   const originals = new Map<string, string>();
   const rollback = async (): Promise<void> => {
     for (const [filePath, original] of originals) {
-      await writeTextAtomic(filePath, original);
+      await writeTextAtomic(filePath, original, { boundary });
     }
   };
 
@@ -354,7 +432,9 @@ export async function applyReferencePlan(
     for (const [filePath, changes] of grouped) {
       const original = await readFile(filePath, "utf8");
       originals.set(filePath, original);
-      await writeTextAtomic(filePath, applyChanges(original, changes));
+      await writeTextAtomic(filePath, applyChanges(original, changes), {
+        boundary,
+      });
     }
   } catch (error) {
     await rollback();

@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import sharp, { type Metadata, type OutputInfo, type Sharp } from "sharp";
 import { ImageSlimError } from "../errors/image-slim-error";
 import { parseByteSize } from "../filesystem/size";
@@ -189,7 +189,7 @@ async function findTarget(
 export async function inspectImage(path: string): Promise<ImageMetadata> {
   try {
     const info = await sharp(path).metadata();
-    const fileSize = (await readFile(path)).byteLength;
+    const fileSize = (await stat(path)).size;
     return metadataFromSharp(
       info,
       fileSize,

@@ -108,6 +108,8 @@ export interface FileOptimizationResult {
   savingsBytes: number;
   savingsPercentage: number;
   error?: { code: string; message: string };
+  /** Present when `status` is `"skipped"` and the caller asked for `--verbose`. */
+  skipReason?: string;
 }
 
 export interface OptimizationReport {

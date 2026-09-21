@@ -1,12 +1,13 @@
-import { copyFile, rm, unlink } from "node:fs/promises";
+import { rm } from "node:fs/promises";
 import { performance } from "node:perf_hooks";
-import { basename } from "node:path";
 import { discoverFiles } from "../filesystem/discovery";
 import {
   planOutputs,
   validateOutputPlan,
   type PlannedFile,
 } from "../filesystem/output-plan";
+import { pathIdentity } from "../filesystem/paths";
+import { removeOriginalsSafely } from "../filesystem/originals";
 import { ImageSlimError } from "../errors/image-slim-error";
 import { buildReferencePlan, applyReferencePlan } from "../references/scanner";
 import type {
@@ -48,40 +49,26 @@ function assertNotAborted(signal?: AbortSignal): void {
   }
 }
 
-async function removeOriginalsSafely(
-  transformations: Array<{ sourcePath: string }>,
-  rollbackReferences: () => Promise<void>,
+/**
+ * Delete outputs created by this run. Files that already existed before the
+ * run are never touched so rollback cannot destroy a user's data.
+ */
+async function cleanupCreatedOutputs(
+  results: FileOptimizationResult[],
+  options: ResolvedRunOptions,
+  preExisting: Set<string>,
 ): Promise<void> {
-  const backups: Array<{ sourcePath: string; backupPath: string }> = [];
-  try {
-    for (const [index, transformation] of transformations.entries()) {
-      const backupPath = `${transformation.sourcePath}.${basename(transformation.sourcePath)}.${process.pid}.${Date.now()}.${index}.backup`;
-      await copyFile(transformation.sourcePath, backupPath);
-      backups.push({ sourcePath: transformation.sourcePath, backupPath });
-    }
-    for (const transformation of transformations) {
-      await unlink(transformation.sourcePath);
-    }
-  } catch (error) {
-    for (const backup of backups) {
-      try {
-        await copyFile(backup.backupPath, backup.sourcePath);
-      } catch {
-        // Preserve the original failure; the backup remains available for recovery.
-      }
-    }
-    await rollbackReferences();
-    await Promise.all(
-      backups.map((backup) => rm(backup.backupPath, { force: true })),
-    );
-    throw new ImageSlimError(
-      "REFERENCE_UPDATE_FAILED",
-      "Unable to remove originals safely; changes were rolled back.",
-      { cause: error },
-    );
-  }
+  if (options.dryRun) return;
   await Promise.all(
-    backups.map((backup) => rm(backup.backupPath, { force: true })),
+    results
+      .filter(
+        (result) =>
+          (result.status === "optimized" || result.status === "copied") &&
+          result.outputPath &&
+          result.outputPath !== result.sourcePath &&
+          !preExisting.has(pathIdentity(result.outputPath)),
+      )
+      .map((result) => rm(result.outputPath as string, { force: true })),
   );
 }
 
@@ -107,7 +94,7 @@ export async function runOptimization(
   }
   options.onProgress?.({ phase: "discovered", total: discovered.length });
   const planned = planOutputs(discovered, options);
-  await validateOutputPlan(planned, options);
+  const { preExisting } = await validateOutputPlan(planned, options);
 
   let completed = 0;
   const results = await mapWithConcurrency(
@@ -151,135 +138,146 @@ export async function runOptimization(
     options.signal,
   );
 
-  assertNotAborted(options.signal);
-  const transformations = results
-    .filter(
-      (result) =>
-        result.status === "optimized" &&
-        result.outputPath &&
-        result.outputPath !== result.sourcePath,
-    )
-    .map((result) => {
-      const output = result.outputPath as string;
-      const extension = output.slice(output.lastIndexOf(".") + 1).toLowerCase();
-      return {
-        sourcePath: result.sourcePath,
-        outputPath: output,
-        sourceFormat: result.original.format,
-        outputFormat:
-          extension === "jpg" || extension === "jpeg"
-            ? ("jpeg" as const)
-            : extension === "png"
-              ? ("png" as const)
-              : ("webp" as const),
-        sourceSize: result.original.size,
-        outputSize: result.outputSize ?? 0,
-      };
-    });
+  const destructive = options.removeOriginals && !options.dryRun;
+  const cleanup = (): Promise<void> =>
+    cleanupCreatedOutputs(results, options, preExisting);
 
-  let referencePlan;
   try {
-    referencePlan = options.updateReferences
-      ? await buildReferencePlan(transformations, options)
-      : { filesScanned: 0, changes: [], unresolved: [] };
-  } catch (error) {
-    await cleanupCreatedOutputs(results, options);
-    throw error;
-  }
+    assertNotAborted(options.signal);
 
-  if (options.removeOriginals && !options.dryRun) {
-    if (referencePlan.filesScanned === 0) {
-      await cleanupCreatedOutputs(results, options);
-      throw new ImageSlimError(
-        "REFERENCE_UPDATE_FAILED",
-        "Cannot remove originals because no reference files were scanned.",
-      );
+    if (destructive) {
+      const failures = results.filter((result) => result.status === "failed");
+      if (failures.length > 0) {
+        throw new ImageSlimError(
+          "ENCODE_FAILED",
+          `Cannot remove originals because ${failures.length} image(s) failed to optimize.`,
+        );
+      }
     }
-    if (referencePlan.unresolved.length > 0) {
-      await cleanupCreatedOutputs(results, options);
-      throw new ImageSlimError(
-        "REFERENCE_UPDATE_FAILED",
-        `Cannot remove originals because ${referencePlan.unresolved.length} relevant references could not be resolved.`,
-      );
-    }
-  }
 
-  let referenceTransaction;
-  try {
-    referenceTransaction = await applyReferencePlan(
-      referencePlan,
-      options.dryRun,
-    );
-  } catch (error) {
-    await cleanupCreatedOutputs(results, options);
-    throw error;
-  }
-  const referencesChanged = referenceTransaction.changed;
-
-  if (options.removeOriginals && !options.dryRun) {
-    await removeOriginalsSafely(transformations, referenceTransaction.rollback);
-  }
-
-  const originalBytes = results.reduce(
-    (sum, result) => sum + result.original.size,
-    0,
-  );
-  const outputBytes = results.reduce(
-    (sum, result) => sum + (result.outputSize ?? 0),
-    0,
-  );
-  const savedBytes = originalBytes - outputBytes;
-  const report: OptimizationReport = {
-    mode: options.check ? "check" : "optimize",
-    dryRun: options.dryRun,
-    filesScanned: discovered.length,
-    optimized: results.filter((result) => result.status === "optimized").length,
-    copied: results.filter((result) => result.status === "copied").length,
-    skipped: results.filter((result) => result.status === "skipped").length,
-    failed: results.filter((result) => result.status === "failed").length,
-    originalBytes,
-    outputBytes,
-    savedBytes,
-    savingsPercentage:
-      originalBytes === 0 ? 0 : (savedBytes / originalBytes) * 100,
-    referenceFilesScanned: referencePlan.filesScanned,
-    referencesChanged,
-    unresolvedReferences: referencePlan.unresolved,
-    results,
-    durationMs: Math.round(performance.now() - started),
-    config: {
-      format: options.format,
-      quality: options.quality,
-      targetSize: options.targetSize,
-      maxWidth: options.maxWidth,
-      maxHeight: options.maxHeight,
-      concurrency: options.concurrency,
-      metadata: options.metadata,
-      inPlace: options.inPlace,
-      updateReferences: options.updateReferences,
-      progress: options.progress,
-      overwrite: options.overwrite,
-    },
-  };
-  options.onProgress?.({ phase: "complete", report });
-  return report;
-}
-
-async function cleanupCreatedOutputs(
-  results: FileOptimizationResult[],
-  options: ResolvedRunOptions,
-): Promise<void> {
-  if (options.dryRun || options.overwrite) return;
-  await Promise.all(
-    results
+    const transformations = results
       .filter(
         (result) =>
-          (result.status === "optimized" || result.status === "copied") &&
+          result.status === "optimized" &&
           result.outputPath &&
           result.outputPath !== result.sourcePath,
       )
-      .map((result) => rm(result.outputPath as string, { force: true })),
-  );
+      .map((result) => {
+        const output = result.outputPath as string;
+        const extension = output
+          .slice(output.lastIndexOf(".") + 1)
+          .toLowerCase();
+        return {
+          sourcePath: result.sourcePath,
+          outputPath: output,
+          sourceFormat: result.original.format,
+          outputFormat:
+            extension === "jpg" || extension === "jpeg"
+              ? ("jpeg" as const)
+              : extension === "png"
+                ? ("png" as const)
+                : ("webp" as const),
+          sourceSize: result.original.size,
+          outputSize: result.outputSize ?? 0,
+        };
+      });
+
+    let referencePlan;
+    try {
+      referencePlan = options.updateReferences
+        ? await buildReferencePlan(transformations, options)
+        : { filesScanned: 0, changes: [], unresolved: [] };
+    } catch (error) {
+      await cleanup();
+      throw error;
+    }
+
+    if (destructive) {
+      if (referencePlan.filesScanned === 0) {
+        throw new ImageSlimError(
+          "REFERENCE_UPDATE_FAILED",
+          "Cannot remove originals because no reference files were scanned.",
+        );
+      }
+      if (referencePlan.unresolved.length > 0) {
+        throw new ImageSlimError(
+          "REFERENCE_UPDATE_FAILED",
+          `Cannot remove originals because ${referencePlan.unresolved.length} relevant references could not be resolved.`,
+        );
+      }
+    }
+
+    let referenceTransaction;
+    try {
+      referenceTransaction = await applyReferencePlan(
+        referencePlan,
+        options.dryRun,
+        options.cwd,
+      );
+    } catch (error) {
+      await cleanup();
+      throw error;
+    }
+    const referencesChanged = referenceTransaction.changed;
+
+    if (destructive) {
+      await removeOriginalsSafely(
+        transformations,
+        referenceTransaction.rollback,
+      );
+    }
+
+    const originalBytes = results.reduce(
+      (sum, result) => sum + result.original.size,
+      0,
+    );
+    const outputBytes = results.reduce(
+      (sum, result) => sum + (result.outputSize ?? 0),
+      0,
+    );
+    const savedBytes = originalBytes - outputBytes;
+    const report: OptimizationReport = {
+      mode: options.check ? "check" : "optimize",
+      dryRun: options.dryRun,
+      filesScanned: discovered.length,
+      optimized: results.filter((result) => result.status === "optimized")
+        .length,
+      copied: results.filter((result) => result.status === "copied").length,
+      skipped: results.filter((result) => result.status === "skipped").length,
+      failed: results.filter((result) => result.status === "failed").length,
+      originalBytes,
+      outputBytes,
+      savedBytes,
+      savingsPercentage:
+        originalBytes === 0 ? 0 : (savedBytes / originalBytes) * 100,
+      referenceFilesScanned: referencePlan.filesScanned,
+      referencesChanged,
+      unresolvedReferences: referencePlan.unresolved,
+      results,
+      durationMs: Math.round(performance.now() - started),
+      config: {
+        format: options.format,
+        quality: options.quality,
+        targetSize: options.targetSize,
+        maxWidth: options.maxWidth,
+        maxHeight: options.maxHeight,
+        concurrency: options.concurrency,
+        metadata: options.metadata,
+        inPlace: options.inPlace,
+        updateReferences: options.updateReferences,
+        removeOriginals: options.removeOriginals,
+        progress: options.progress,
+        overwrite: options.overwrite,
+      },
+    };
+    options.onProgress?.({ phase: "complete", report });
+    return report;
+  } catch (error) {
+    // A destructive migration must never leave generated output behind when it
+    // aborts for any reason.
+    if (destructive) await cleanup();
+    throw error;
+  }
 }
 
 export function hasUnoptimizedFiles(report: OptimizationReport): boolean {

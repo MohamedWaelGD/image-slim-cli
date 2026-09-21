@@ -60,6 +60,8 @@
     "format:check": "prettier --check .",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:package": "node scripts/test-package.mjs",
+    "bench": "node --import jiti/register benchmarks/benchmark.ts",
     "audit:prod": "npm audit --omit=dev",
     "validate:package": "npm run typecheck && npm run lint && npm run format:check && npm run test && npm run build && publint && npm pack --dry-run",
     "prepublishOnly": "npm run validate:package"

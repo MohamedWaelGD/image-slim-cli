@@ -80,3 +80,9 @@ export const DEFAULT_CONFIG: ImageSlimConfig = {
 };
 
 export const SUPPORTED_EXTENSIONS = [".jpg", ".jpeg", ".png", ".webp"];
+
+/**
+ * Upper bound for user-configured concurrency. Decoded images can be tens of
+ * megabytes each, so an unbounded worker count is a denial-of-service risk.
+ */
+export const MAX_CONCURRENCY = 64;

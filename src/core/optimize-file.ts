@@ -15,15 +15,30 @@ function savings(
   return { bytes, percentage: original === 0 ? 0 : (bytes / original) * 100 };
 }
 
+type SkipDecision = { skip: true; reason: string } | { skip: false };
+
 function shouldSkip(
   original: number,
   output: number,
   options: ResolvedRunOptions,
-): boolean {
-  if (options.allowLarger) return false;
-  if (options.skipIfLarger && output >= original) return true;
+): SkipDecision {
+  if (options.allowLarger) return { skip: false };
+  if (options.skipIfLarger && output >= original)
+    return { skip: true, reason: "optimized output was larger" };
   const percentage = savings(original, output).percentage;
-  return percentage < options.minSavingsPercentage;
+  if (percentage < options.minSavingsPercentage)
+    return {
+      skip: true,
+      reason: `savings below the ${options.minSavingsPercentage}% minimum`,
+    };
+  return { skip: false };
+}
+
+function outputBoundary(
+  file: PlannedFile,
+  options: ResolvedRunOptions,
+): string {
+  return options.inPlace ? file.root : options.output;
 }
 
 export async function optimizeFile(
@@ -48,13 +63,13 @@ export async function optimizeFile(
       encoded.input.size,
       encoded.output.data.byteLength,
     );
-    const skip = shouldSkip(
+    const decision = shouldSkip(
       encoded.input.size,
       encoded.output.data.byteLength,
       options,
     );
 
-    if (skip) {
+    if (decision.skip) {
       const conversionSkipped =
         options.format !== "original" &&
         normalizeImageFormat(encoded.input.format) !== options.format;
@@ -65,16 +80,23 @@ export async function optimizeFile(
           { cause: options.signal.reason },
         );
       }
+      const boundary = outputBoundary(file, options);
       if (!conversionSkipped && !options.inPlace && !options.dryRun) {
         await copyAtomic(file.absolutePath, file.outputPath, {
           overwrite: options.overwrite,
+          boundary,
         });
       }
+      const skipped = options.inPlace || conversionSkipped;
       return {
         sourcePath: file.absolutePath,
-        outputPath:
-          options.inPlace || conversionSkipped ? undefined : file.outputPath,
-        status: options.inPlace || conversionSkipped ? "skipped" : "copied",
+        outputPath: skipped ? undefined : file.outputPath,
+        status: skipped ? "skipped" : "copied",
+        skipReason: skipped
+          ? options.inPlace
+            ? "in-place optimization did not produce a smaller file"
+            : "format conversion was not beneficial"
+          : undefined,
         original: encoded.input,
         optimized: encoded.input,
         outputSize: encoded.input.size,
@@ -99,6 +121,7 @@ export async function optimizeFile(
         overwrite:
           options.overwrite ||
           (options.inPlace && file.outputPath === file.absolutePath),
+        boundary: outputBoundary(file, options),
       });
     }
     return {

@@ -7,6 +7,7 @@ export type ImageSlimErrorCode =
   | "ENCODE_FAILED"
   | "OUTPUT_COLLISION"
   | "OUTPUT_UNSAFE"
+  | "UNSAFE_INPUT"
   | "REFERENCE_UPDATE_FAILED"
   | "ABORTED";
 

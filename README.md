@@ -12,7 +12,8 @@ file.
 - [Requirements](#requirements)
 - [Installation](#installation)
 - [Quick Start](#quick-start)
-- [Common Workflows](#common-workflows)
+- [Operating Modes](#operating-modes)
+- [Safety](#safety)
 - [CLI Reference](#cli-reference)
   - [Input Discovery](#input-discovery)
   - [Output and Replacement](#output-and-replacement)
@@ -20,9 +21,11 @@ file.
   - [Metadata and Safety](#metadata-and-safety)
   - [Reference Updates](#reference-updates)
   - [Reporting and Configuration](#reporting-and-configuration)
+- [Framework Examples](#framework-examples)
 - [Configuration](#configuration)
 - [Node API](#node-api)
 - [Exit Codes](#exit-codes)
+- [Benchmarks](#benchmarks)
 - [Development](#development)
 - [License](#license)
 
@@ -66,20 +69,78 @@ image-slim ./src/assets --out ./optimized --format webp
 
 [Back to contents](#contents)
 
-## Common Workflows
+## Operating Modes
 
-| Scenario                  | Command                                                                                                      | Result                                                                 |
-| ------------------------- | ------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------- |
-| Safe default optimization | `image-slim ./public`                                                                                        | Writes optimized copies to `./optimized`.                              |
-| Separate WebP output      | `image-slim ./src/assets --out ./optimized --format webp`                                                    | Converts images without changing the source tree.                      |
-| Preview an encode         | `image-slim ./public --format webp --dry-run --verbose`                                                      | Encodes and reports results without writing files.                     |
-| In-place optimization     | `image-slim ./public/images --in-place`                                                                      | Writes accepted output beside each source image.                       |
-| Safe WebP migration       | `image-slim ./src/assets --in-place --format webp --update-references --references ./src --remove-originals` | Updates resolvable references, then removes originals transactionally. |
-| CI cleanliness check      | `image-slim ./public --check --fail-on-unoptimized`                                                          | Exits with code `1` when assets still need optimization.               |
-| JSON report               | `image-slim ./public --check --report json --progress never`                                                 | Writes machine-readable output to stdout.                              |
-| Resize large images       | `image-slim ./uploads --out ./optimized --max-width 1920 --max-height 1080`                                  | Limits dimensions without enlarging smaller images.                    |
-| Target a file size        | `image-slim ./public --format webp --target-size 500kb`                                                      | Searches for quality settings that meet the target when possible.      |
-| Optimize selected files   | `image-slim ./src/assets --include "**/hero-*" --exclude "**/*.test.*"`                                      | Processes only paths matching the filters.                             |
+Image Slim has three modes. They differ in how much of your repository they
+are allowed to change.
+
+### 1. Safe output mode
+
+```bash
+image-slim ./public
+```
+
+```text
+public/                    optimized/
+  hero.jpg        ->         hero.jpg
+  logo.png         ->        logo.png
+```
+
+Originals are untouched. Use `--out <dir>` to choose a different destination.
+
+### 2. In-place optimization
+
+```bash
+image-slim ./public --in-place
+```
+
+Accepted output is written beside each source image. A same-format image can be
+replaced only when it is smaller by at least `--min-savings`. A converted image
+(for example `hero.jpg` to `hero.webp`) is written next to the original, which
+is preserved unless you also pass `--remove-originals`.
+
+### 3. Migration mode (destructive)
+
+```bash
+image-slim ./public \
+  --in-place \
+  --format webp \
+  --update-references \
+  --references ./src \
+  --remove-originals
+```
+
+This is the powerful mode. It converts images, rewrites static references, and
+then removes the originals. It is transactional: if conversion, reference
+updating, or removal fails for any reason, Image Slim restores the originals,
+rolls back reference changes, and deletes generated output.
+
+Read [Safety](#safety) before using it.
+
+[Back to contents](#contents)
+
+## Safety
+
+> **Before using `--in-place` or `--remove-originals`, commit your work or back
+> up your repository.** Run with `--dry-run` first to see exactly what would
+> happen. Image Slim updates static references conservatively and **does not**
+> resolve dynamically constructed asset paths such as
+> `` `/assets/${name}.jpg` `` or `path.join("assets", name + ".jpg")`. When such
+> a reference is relevant to a destructive operation, the operation is refused
+> rather than guessed.
+
+Additional guarantees:
+
+- Writes are atomic. Temporary and backup files are never left behind after a
+  successful run.
+- A failed replacement restores the original content. If restoration itself is
+  impossible, a recoverable backup is preserved and its path is reported.
+- Symbolic links are not followed during discovery by default, and writes never
+  pass through a symbolic link below the destination root. A symbolic-link
+  output directory is rejected.
+- Destructive mode cannot be combined with `--overwrite`, because replaced
+  files could not be rolled back.
+- Concurrency is capped at 64 to bound memory use.
 
 [Back to contents](#contents)
 
@@ -97,7 +158,10 @@ The command accepts one or more input paths, directories, or glob patterns.
 | `--extensions`      | Comma-separated extensions   | `.jpg,.jpeg,.png,.webp`                 | Restricts discovered input extensions.            |
 | `--include`         | Glob pattern; repeatable     | `[]`                                    | Includes only matching input paths.               |
 | `--exclude`         | Glob pattern; repeatable     | Common generated/dependency directories | Excludes matching input paths.                    |
-| `--follow-symlinks` | Boolean flag                 | `false`                                 | Traverses symbolic-link directories.              |
+| `--follow-symlinks` | Boolean flag                 | `false`                                 | Traverses symbolic-link directories and files.    |
+
+When `--follow-symlinks` is disabled, symbolic-link images are skipped and an
+explicit symbolic-link input file is refused.
 
 [Back to contents](#contents)
 
@@ -111,7 +175,8 @@ The command accepts one or more input paths, directories, or glob patterns.
 | `--remove-originals` | Boolean flag | `false`       | Removes source files after reference updates succeed. Requires `--in-place` and `--update-references`. |
 
 `--out` and `--in-place` cannot be used together. In-place conversion does not
-overwrite an existing destination by default.
+overwrite an existing destination by default. `--remove-originals` cannot be
+combined with `--overwrite`.
 
 [Back to contents](#contents)
 
@@ -129,7 +194,7 @@ overwrite an existing destination by default.
 | `--min-savings`    | Percentage                           | `5`        | Requires this minimum reduction before replacing or writing an output.      |
 | `--skip-if-larger` | Boolean flag                         | `true`     | Skips output when it is not smaller than the source.                        |
 | `--allow-larger`   | Boolean flag                         | `false`    | Accepts an output even when it is larger. Disables skip-if-larger behavior. |
-| `--concurrency`    | Positive number                      | `2`        | Maximum number of active image jobs.                                        |
+| `--concurrency`    | Positive number, at most `64`        | `2`        | Maximum number of active image jobs.                                        |
 
 [Back to contents](#contents)
 
@@ -181,6 +246,133 @@ reference update transactions have succeeded.
 
 Progress is written to stderr, so JSON reports remain clean on stdout.
 
+A dry run reports everything it would do without touching the filesystem:
+
+```text
+Image Slim (dry run)
+
+Found               128
+
+Optimize             94
+Convert              73
+Copy                 13
+Skip                 21
+Failed                0
+
+References
+Scanned             214 files
+Would update         67
+Unresolved            2
+
+Originals
+Would remove         73
+
+Estimated
+Original          142.8 MB
+Optimized          48.2 MB
+Saved              94.6 MB (66.2%)
+
+Completed in        3.40s
+
+No files were modified.
+```
+
+`--verbose` explains each decision:
+
+```text
++ assets/hero.jpg
+  2.8 MB -> 624.0 KB
+  JPEG -> WEBP
+  77.7% smaller
+- assets/logo.png
+  skipped: optimized output was larger (12.0 KB)
+```
+
+Verbose mode also lists unresolved references with their reason:
+
+```text
+Unresolved            2
+  src/app.ts: path.join("assets", name + ".jpg") (dynamic)
+```
+
+[Back to contents](#contents)
+
+## Framework Examples
+
+All examples assume the CLI is installed as a dev dependency.
+
+### Angular
+
+```bash
+image-slim ./src/assets/images \
+  --in-place \
+  --format webp \
+  --update-references \
+  --references ./src
+```
+
+### React
+
+```bash
+image-slim ./src/assets \
+  --in-place \
+  --format webp \
+  --update-references \
+  --references ./src
+```
+
+### Next.js
+
+```bash
+image-slim ./public \
+  --format webp \
+  --out ./public/optimized
+```
+
+Next.js serves assets from `public`, so prefer safe output mode and point
+components at the optimized tree, or run in-place with `--references ./app
+./components ./pages`.
+
+### Vue
+
+```bash
+image-slim ./src/assets \
+  --in-place \
+  --format webp \
+  --update-references \
+  --references ./src
+```
+
+### Astro
+
+```bash
+image-slim ./src/assets \
+  --in-place \
+  --format webp \
+  --update-references \
+  --references ./src
+```
+
+### Vite
+
+```bash
+image-slim ./src/assets \
+  --in-place \
+  --format webp \
+  --update-references \
+  --references ./src
+```
+
+### Plain HTML and CSS
+
+```bash
+image-slim ./assets \
+  --in-place \
+  --format webp \
+  --update-references \
+  --references ./assets
+```
+
 [Back to contents](#contents)
 
 ## Configuration
@@ -209,6 +401,12 @@ export default defineConfig({
 
 CLI options override values loaded from the configuration file. Pass
 `--config <path>` to use a non-standard configuration path.
+
+> **Configuration files execute as Node.js modules.**
+> `image-slim.config.ts`, `image-slim.config.js`, and the other supported
+> configuration files are loaded and executed through `jiti`. They therefore
+> have the same system access as any other Node.js configuration file. Only run
+> Image Slim with configuration files from repositories you trust.
 
 [Back to contents](#contents)
 
@@ -254,6 +452,22 @@ reference changes, unresolved references, and duration.
 
 [Back to contents](#contents)
 
+## Benchmarks
+
+Reproducible performance and memory benchmarks live in `benchmarks/`.
+
+```bash
+npm run bench
+npm run bench -- --workload normal --concurrency 1,2,4
+```
+
+Each run reports execution time, images per second, peak RSS, input and output
+bytes, total savings, and per-file outcome counts. See
+[`benchmarks/README.md`](benchmarks/README.md) for workload definitions and
+guidance on interpreting results.
+
+[Back to contents](#contents)
+
 ## Development
 
 Clone the repository, install dependencies, then run:
@@ -274,8 +488,13 @@ Useful repository commands:
 | `npm run format:check`     | Checks Prettier formatting.                                                   |
 | `npm test`                 | Runs the test suite once.                                                     |
 | `npm run test:watch`       | Runs Vitest in watch mode.                                                    |
+| `npm run test:package`     | Packs the package and exercises it from an isolated install.                  |
+| `npm run bench`            | Runs the performance and memory benchmarks.                                   |
 | `npm run audit:prod`       | Audits production dependencies.                                               |
 | `npm run validate:package` | Runs typecheck, lint, formatting, tests, build, publint, and pack validation. |
+
+CI runs the full validation suite on Node 20, 22, and 24 on Ubuntu, plus Node 20
+on Windows and macOS.
 
 [Back to contents](#contents)
 
