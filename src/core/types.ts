@@ -11,6 +11,7 @@ export interface ResolvedRunOptions {
   output: string;
   format: ImageFormat;
   quality: number;
+  minQuality: number;
   targetSize?: number;
   maxWidth?: number;
   maxHeight?: number;
@@ -32,6 +33,7 @@ export interface ResolvedRunOptions {
   dryRun: boolean;
   check: boolean;
   failOnUnoptimized: boolean;
+  failOnTargetSize: boolean;
   verbose: boolean;
   report: "text" | "json";
   progress: ProgressMode;
@@ -45,6 +47,7 @@ export function toOptimizationOptions(options: ResolvedRunOptions) {
   return {
     format: options.format,
     quality: options.quality,
+    minQuality: options.minQuality,
     targetSize: options.targetSize,
     maxWidth: options.maxWidth,
     maxHeight: options.maxHeight,

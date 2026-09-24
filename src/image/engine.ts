@@ -32,6 +32,7 @@ function metadataFromSharp(
     format: metadata.format ?? fallbackFormat,
     hasAlpha: metadata.hasAlpha,
     orientation: metadata.orientation,
+    pages: metadata.pages,
   };
 }
 
@@ -86,11 +87,13 @@ async function encode(
       ? pipeline.jpeg({ quality, progressive: true, mozjpeg: true })
       : format === "webp"
         ? pipeline.webp({ quality })
-        : pipeline.png({
-            compressionLevel: 9,
-            adaptiveFiltering: true,
-            palette: false,
-          });
+        : format === "avif"
+          ? pipeline.avif({ quality })
+          : pipeline.png({
+              compressionLevel: 9,
+              adaptiveFiltering: true,
+              palette: false,
+            });
 
   try {
     return await configured.toBuffer({ resolveWithObject: true });
@@ -106,6 +109,7 @@ async function findTarget(
   format: OutputFormat,
   targetSize: number,
   maxQuality: number,
+  minQuality: number,
   signal?: AbortSignal,
 ): Promise<EncodedImage> {
   assertNotAborted(signal);
@@ -124,7 +128,7 @@ async function findTarget(
     };
   }
 
-  const minimumQuality = Math.min(40, maxQuality);
+  const minimumQuality = Math.min(minQuality, maxQuality);
   const highest = await encode(pipeline.clone(), format, maxQuality);
   if (highest.data.byteLength <= targetSize) {
     return {
@@ -188,7 +192,7 @@ async function findTarget(
 
 export async function inspectImage(path: string): Promise<ImageMetadata> {
   try {
-    const info = await sharp(path).metadata();
+    const info = await sharp(path, { animated: true }).metadata();
     const fileSize = (await stat(path)).size;
     return metadataFromSharp(
       info,
@@ -213,7 +217,7 @@ export async function encodeImage(
   let metadata: Metadata;
   try {
     input = await readFile(path);
-    metadata = await sharp(input).metadata();
+    metadata = await sharp(input, { animated: true }).metadata();
   } catch (error) {
     throw new ImageSlimError(
       "DECODE_FAILED",
@@ -227,6 +231,12 @@ export async function encodeImage(
     input.byteLength,
     path.slice(path.lastIndexOf(".") + 1).toLowerCase(),
   );
+  if ((metadata.pages ?? 1) > 1) {
+    throw new ImageSlimError(
+      "ANIMATED_IMAGE",
+      "Animated images are skipped to preserve their frames.",
+    );
+  }
   const format = outputFormat(inputMetadata, options.format);
   const pipeline = buildPipeline(input, inputMetadata, options, format);
   const targetSize =
@@ -239,6 +249,7 @@ export async function encodeImage(
         format,
         targetSize,
         options.quality ?? 82,
+        options.minQuality ?? 40,
         options.signal,
       )
     : (() =>

@@ -7,7 +7,8 @@ export function normalizeImageFormat(
 ): OutputFormat | undefined {
   if (!format) return undefined;
   if (format === "jpg") return "jpeg";
-  return ["jpeg", "png", "webp"].includes(format)
+  if (format === "heif") return "avif";
+  return ["jpeg", "png", "webp", "avif"].includes(format)
     ? (format as OutputFormat)
     : undefined;
 }

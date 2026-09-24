@@ -2,7 +2,7 @@ import { ImageSlimError } from "../errors/image-slim-error";
 import { MAX_CONCURRENCY } from "./defaults";
 import type { ImageFormat, ImageSlimConfig } from "../types/public";
 
-const FORMATS = new Set<ImageFormat>(["original", "jpeg", "png", "webp"]);
+const FORMATS = new Set<ImageFormat>(["original", "jpeg", "png", "webp", "avif"]);
 
 function assertStringArray(name: string, value: unknown): void {
   if (
@@ -49,6 +49,28 @@ export function validateConfig(config: ImageSlimConfig): void {
     throw new ImageSlimError(
       "INVALID_OPTIONS",
       "quality must be a finite number from 1 to 100.",
+    );
+  }
+
+  if (
+    config.minQuality !== undefined &&
+    (!Number.isInteger(config.minQuality) ||
+      config.minQuality < 1 ||
+      config.minQuality > 100)
+  ) {
+    throw new ImageSlimError(
+      "INVALID_OPTIONS",
+      "minQuality must be an integer from 1 to 100.",
+    );
+  }
+  if (
+    config.minQuality !== undefined &&
+    config.quality !== undefined &&
+    config.minQuality > config.quality
+  ) {
+    throw new ImageSlimError(
+      "INVALID_OPTIONS",
+      "minQuality cannot be greater than quality.",
     );
   }
 
@@ -104,6 +126,7 @@ export function validateConfig(config: ImageSlimConfig): void {
     ["dryRun", config.dryRun],
     ["check", config.check],
     ["failOnUnoptimized", config.failOnUnoptimized],
+    ["failOnTargetSize", config.failOnTargetSize],
     ["verbose", config.verbose],
     ["overwrite", config.overwrite],
   ] as const) {

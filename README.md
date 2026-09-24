@@ -32,7 +32,7 @@ file.
 ## Requirements
 
 - Node.js 20 or newer
-- Supported image formats: JPEG, PNG, and WebP
+- Supported image formats: JPEG, PNG, WebP, and AVIF
 
 [Back to contents](#contents)
 
@@ -128,6 +128,9 @@ Read [Safety](#safety) before using it.
 > `` `/assets/${name}.jpg` `` or `path.join("assets", name + ".jpg")`. When such
 > a reference is relevant to a destructive operation, the operation is refused
 > rather than guessed.
+>
+> Animated WebP inputs are skipped with an explanation so their frames are
+> preserved.
 
 Additional guarantees:
 
@@ -155,7 +158,7 @@ The command accepts one or more input paths, directories, or glob patterns.
 | Input               | Value                        | Default                                 | Description                                       |
 | ------------------- | ---------------------------- | --------------------------------------- | ------------------------------------------------- |
 | `[inputs...]`       | Files, directories, or globs | Required unless configured              | Assets to process. Multiple inputs are supported. |
-| `--extensions`      | Comma-separated extensions   | `.jpg,.jpeg,.png,.webp`                 | Restricts discovered input extensions.            |
+| `--extensions`      | Comma-separated extensions   | `.jpg,.jpeg,.png,.webp,.avif`           | Restricts discovered input extensions.            |
 | `--include`         | Glob pattern; repeatable     | `[]`                                    | Includes only matching input paths.               |
 | `--exclude`         | Glob pattern; repeatable     | Common generated/dependency directories | Excludes matching input paths.                    |
 | `--follow-symlinks` | Boolean flag                 | `false`                                 | Traverses symbolic-link directories and files.    |
@@ -184,8 +187,9 @@ combined with `--overwrite`.
 
 | Input              | Value                                | Default    | Description                                                                 |
 | ------------------ | ------------------------------------ | ---------- | --------------------------------------------------------------------------- |
-| `--format`         | `original`, `jpeg`, `png`, or `webp` | `original` | Selects the output format.                                                  |
+| `--format`         | `original`, `jpeg`, `png`, `webp`, or `avif` | `original` | Selects the output format.                                                  |
 | `--quality`        | `1`-`100`                            | `82`       | Sets lossy encoding quality.                                                |
+| `--min-quality`    | `1`-`100`                            | `40`       | Lowest quality used when searching for a target size.                       |
 | `--target-size`    | Size such as `500kb` or `1mb`        | Unset      | Searches for an encoding that stays under the target when possible.         |
 | `--max-width`      | Pixels                               | Unset      | Limits output width. Smaller images are not enlarged by default.            |
 | `--max-height`     | Pixels                               | Unset      | Limits output height.                                                       |
@@ -207,6 +211,7 @@ combined with `--overwrite`.
 | `--dry-run`             | Boolean flag | `false`  | Encodes and reports without writing files.                                                  |
 | `--check`               | Boolean flag | `false`  | Checks assets without writing files; implies dry-run behavior.                              |
 | `--fail-on-unoptimized` | Boolean flag | `false`  | Returns exit code `1` when a check finds assets that need optimization. Requires `--check`. |
+| `--fail-on-target-size` | Boolean flag | `false`  | Returns exit code `1` if any encoded output exceeds `--target-size`.                   |
 
 `--keep-metadata` and `--strip-metadata` cannot be combined. Likewise,
 `--allow-larger` and `--skip-if-larger` cannot be combined explicitly.
@@ -217,13 +222,14 @@ combined with `--overwrite`.
 
 | Input                 | Value                    | Default                             | Description                                                                     |
 | --------------------- | ------------------------ | ----------------------------------- | ------------------------------------------------------------------------------- |
-| `--update-references` | Boolean flag             | `false`                             | Updates static image references in HTML, CSS, SCSS, Less, JS, JSX, TS, and TSX. |
+| `--update-references` | Boolean flag             | `false`                             | Updates static image references in HTML, CSS, JS, TS, Vue, Astro, and Svelte files. |
 | `--references`        | Directory; repeatable    | None                                | Roots to scan for source references.                                            |
 | `--reference-include` | Glob pattern; repeatable | Supported source files              | Includes matching reference files.                                              |
 | `--reference-exclude` | Glob pattern; repeatable | Generated, minified, and test files | Excludes matching reference files.                                              |
 
-Reference updates are conservative. A reference is rewritten only when it maps
-to exactly one discovered image. Dynamic path construction, missing paths, and
+Reference updates scan HTML, CSS, JavaScript, TypeScript, Vue, Astro, and Svelte
+files. They are conservative: a reference is rewritten only when it maps to
+exactly one discovered image. Dynamic path construction, missing paths, and
 ambiguous matches are reported but are never rewritten.
 
 Use `--remove-originals` only when the reference scan reports no relevant
@@ -446,6 +452,7 @@ reference changes, unresolved references, and duration.
 | ----: | -------------------------------------------------------------------- |
 |   `0` | Successful optimization, check, help, or version output.             |
 |   `1` | `--check --fail-on-unoptimized` found assets that need optimization. |
+|   `1` | `--fail-on-target-size` found an output above the requested target.   |
 |   `2` | Invalid options or command usage.                                    |
 |   `3` | Processing, configuration, or filesystem failure.                    |
 | `130` | Interrupted with Ctrl+C or another abort signal.                     |

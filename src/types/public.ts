@@ -1,4 +1,4 @@
-export type ImageFormat = "original" | "jpeg" | "png" | "webp";
+export type ImageFormat = "original" | "jpeg" | "png" | "webp" | "avif";
 export type MetadataMode = "strip" | "keep";
 export type ReportFormat = "text" | "json";
 export type ProgressMode = "auto" | "always" | "never";
@@ -29,6 +29,7 @@ export interface ReferenceOptions {
 export interface OptimizationOptions {
   format?: ImageFormat;
   quality?: number;
+  minQuality?: number;
   targetSize?: number | string;
   maxWidth?: number;
   maxHeight?: number;
@@ -47,6 +48,7 @@ export interface OptimizationOptions {
   dryRun?: boolean;
   check?: boolean;
   failOnUnoptimized?: boolean;
+  failOnTargetSize?: boolean;
   verbose?: boolean;
   report?: ReportFormat;
   progress?: ProgressMode;
@@ -71,6 +73,7 @@ export interface ImageMetadata {
   format: string;
   hasAlpha?: boolean;
   orientation?: number;
+  pages?: number;
 }
 
 export interface AssetTransformation {

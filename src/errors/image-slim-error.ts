@@ -3,6 +3,7 @@ export type ImageSlimErrorCode =
   | "INVALID_OPTIONS"
   | "INPUT_NOT_FOUND"
   | "UNSUPPORTED_FORMAT"
+  | "ANIMATED_IMAGE"
   | "DECODE_FAILED"
   | "ENCODE_FAILED"
   | "OUTPUT_COLLISION"

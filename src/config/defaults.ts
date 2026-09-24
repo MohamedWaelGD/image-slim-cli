@@ -11,7 +11,7 @@ export const DEFAULT_INPUT_IGNORES = [
 ];
 
 export const DEFAULT_REFERENCE_INCLUDE = [
-  "**/*.{html,htm,css,scss,sass,less,js,jsx,ts,tsx}",
+  "**/*.{html,htm,css,scss,sass,less,js,jsx,ts,tsx,vue,astro,svelte}",
 ];
 
 export const DEFAULT_REFERENCE_EXCLUDE = [
@@ -79,7 +79,7 @@ export const DEFAULT_CONFIG: ImageSlimConfig = {
   },
 };
 
-export const SUPPORTED_EXTENSIONS = [".jpg", ".jpeg", ".png", ".webp"];
+export const SUPPORTED_EXTENSIONS = [".jpg", ".jpeg", ".png", ".webp", ".avif"];
 
 /**
  * Upper bound for user-configured concurrency. Decoded images can be tens of

@@ -40,8 +40,13 @@ export function createProgram(): Command {
       "--remove-originals",
       "remove source files after transactional reference updates",
     )
-    .option("--format <format>", "original, jpeg, png, or webp")
+    .option("--format <format>", "original, jpeg, png, webp, or avif")
     .option("--quality <number>", "quality from 1 to 100", parseNumber)
+    .option(
+      "--min-quality <number>",
+      "minimum quality for target-size search",
+      parseNumber,
+    )
     .option(
       "--target-size <size>",
       "maximum output size, for example 500kb",
@@ -80,8 +85,12 @@ export function createProgram(): Command {
       "exit 1 when check finds assets to optimize",
     )
     .option(
+      "--fail-on-target-size",
+      "exit 1 when an output exceeds target size",
+    )
+    .option(
       "--update-references",
-      "update static HTML, CSS, JS, and TS references",
+      "update static HTML, CSS, JS, TS, Vue, Astro, and Svelte references",
     )
     .option(
       "--references <directory...>",
@@ -121,6 +130,7 @@ function optionsFromCommand(options: Record<string, unknown>): RunOptions {
     removeOriginals: options.removeOriginals as boolean | undefined,
     format: options.format as RunOptions["format"],
     quality: options.quality as number | undefined,
+    minQuality: options.minQuality as number | undefined,
     targetSize: options.targetSize as number | undefined,
     maxWidth: options.maxWidth as number | undefined,
     maxHeight: options.maxHeight as number | undefined,
@@ -144,6 +154,7 @@ function optionsFromCommand(options: Record<string, unknown>): RunOptions {
     dryRun: options.dryRun as boolean | undefined,
     check: options.check as boolean | undefined,
     failOnUnoptimized: options.failOnUnoptimized as boolean | undefined,
+    failOnTargetSize: options.failOnTargetSize as boolean | undefined,
     updateReferences: options.updateReferences as boolean | undefined,
     references: {
       roots: options.references as string[] | undefined,
@@ -206,6 +217,11 @@ export async function main(argv = process.argv): Promise<number> {
         resolved.check &&
         resolved.failOnUnoptimized &&
         hasUnoptimizedFiles(report)
+      ) {
+        resultCode = 1;
+      } else if (
+        resolved.failOnTargetSize &&
+        report.results.some((result) => result.targetSizeReached === false)
       ) {
         resultCode = 1;
       }

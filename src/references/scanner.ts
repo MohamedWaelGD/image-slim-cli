@@ -44,10 +44,10 @@ interface Candidate {
   expression?: string;
 }
 
-const IMAGE_VALUE = /\.(?:jpe?g|png|webp)(?:[?#][^\s"')>]+)?$/i;
+const IMAGE_VALUE = /\.(?:jpe?g|png|webp|avif)(?:[?#][^\s"')>]+)?$/i;
 const DYNAMIC_VALUE = /[${}]|\b(?:join|resolve|concat)\s*\(/;
 const DYNAMIC_EXPRESSION =
-  /\b(?:path\.)?(?:join|resolve|concat)\s*\([^;\n]*(?:jpe?g|png|webp)/i;
+  /\b(?:path\.)?(?:join|resolve|concat)\s*\([^;\n]*(?:jpe?g|png|webp|avif)/i;
 
 function stripSuffix(value: string): string {
   return value.split(/[?#]/, 1)[0] ?? value;
@@ -58,7 +58,8 @@ function sourceExtension(sourcePath: string): string | undefined {
     .slice(sourcePath.lastIndexOf(".") + 1)
     .toLowerCase();
   if (extension === "jpg" || extension === "jpeg") return "jpeg";
-  if (extension === "png" || extension === "webp") return extension;
+  if (extension === "png" || extension === "webp" || extension === "avif")
+    return extension;
   return undefined;
 }
 
@@ -134,7 +135,7 @@ function candidatesFor(content: string, extension: string): Candidate[] {
           part
             .trim()
             .match(
-              /^(.*?\.(?:jpe?g|png|webp)(?:[?#][^\s"')>]+)?)(?:\s+.*)?$/i,
+              /^(.*?\.(?:jpe?g|png|webp|avif)(?:[?#][^\s"')>]+)?)(?:\s+.*)?$/i,
             )?.[1] ?? "";
         if (!token || !IMAGE_VALUE.test(token)) {
           offset += part.length + 1;
@@ -147,6 +148,31 @@ function candidatesFor(content: string, extension: string): Candidate[] {
       }
     }
   } else {
+    const srcset = /\bsrcSet\s*=\s*(?:\{\s*)?(['"])(.*?)\1(?:\s*\})?/gi;
+    for (
+      let match = srcset.exec(content);
+      match;
+      match = srcset.exec(content)
+    ) {
+      const value = match[2] ?? "";
+      let offset = 0;
+      for (const part of value.split(",")) {
+        const leading = part.search(/\S/);
+        const token =
+          part
+            .trim()
+            .match(
+              /^(.*?\.(?:jpe?g|png|webp|avif)(?:[?#][^\s"')>]+)?)(?:\s+.*)?$/i,
+            )?.[1] ?? "";
+        if (token && IMAGE_VALUE.test(token)) {
+          const valueStart = match.index + match[0].indexOf(value);
+          const start = valueStart + offset + Math.max(leading, 0);
+          candidates.push({ start, end: start + token.length, value: token });
+        }
+        offset += part.length + 1;
+      }
+    }
+
     const patterns = [
       /\bfrom\s*(['"])([^'"]+)\1/gi,
       /\bimport\s*(['"])([^'"]+)\1/gi,
@@ -219,7 +245,7 @@ function couldReferToTransformation(
   transformations: AssetTransformation[],
 ): boolean {
   if (DYNAMIC_VALUE.test(value)) {
-    const match = /\.(jpe?g|png|webp)(?![a-z0-9])/i.exec(value);
+    const match = /\.(jpe?g|png|webp|avif)(?![a-z0-9])/i.exec(value);
     if (!match) return false;
     const extension = match[1]?.toLowerCase();
     const normalized =

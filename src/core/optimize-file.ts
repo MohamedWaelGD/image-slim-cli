@@ -1,4 +1,4 @@
-import { encodeImage } from "../image/engine";
+import { encodeImage, inspectImage } from "../image/engine";
 import { copyAtomic, writeAtomic } from "../filesystem/atomic";
 import { ImageSlimError } from "../errors/image-slim-error";
 import { normalizeImageFormat } from "../image/formats";
@@ -137,6 +137,17 @@ export async function optimizeFile(
       quality: encoded.output.quality,
     };
   } catch (error) {
+    if (error instanceof ImageSlimError && error.code === "ANIMATED_IMAGE") {
+      const original = await inspectImage(file.absolutePath);
+      return {
+        sourcePath: file.absolutePath,
+        status: "skipped",
+        original,
+        savingsBytes: 0,
+        savingsPercentage: 0,
+        skipReason: error.message,
+      };
+    }
     if (error instanceof ImageSlimError) throw error;
     throw new ImageSlimError(
       "ENCODE_FAILED",

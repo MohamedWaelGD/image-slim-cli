@@ -176,7 +176,9 @@ export async function runOptimization(
               ? ("jpeg" as const)
               : extension === "png"
                 ? ("png" as const)
-                : ("webp" as const),
+                : extension === "avif"
+                  ? ("avif" as const)
+                  : ("webp" as const),
           sourceSize: result.original.size,
           outputSize: result.outputSize ?? 0,
         };
@@ -258,6 +260,7 @@ export async function runOptimization(
       config: {
         format: options.format,
         quality: options.quality,
+        minQuality: options.minQuality,
         targetSize: options.targetSize,
         maxWidth: options.maxWidth,
         maxHeight: options.maxHeight,
@@ -268,6 +271,7 @@ export async function runOptimization(
         removeOriginals: options.removeOriginals,
         progress: options.progress,
         overwrite: options.overwrite,
+        failOnTargetSize: options.failOnTargetSize,
       },
     };
     options.onProgress?.({ phase: "complete", report });

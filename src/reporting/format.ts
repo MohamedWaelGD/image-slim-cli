@@ -88,6 +88,9 @@ export function formatTextReport(
   if (verbose) {
     lines.push("", ...report.results.flatMap(resultLines), "");
   }
+  const missedTargets = report.results.filter(
+    (result) => result.targetSizeReached === false,
+  );
 
   lines.push(
     "Found               " + report.filesScanned,
@@ -98,6 +101,14 @@ export function formatTextReport(
     "Skip                " + totals.skipped,
     "Failed              " + totals.failed,
   );
+  if (missedTargets.length > 0) {
+    lines.push("Target size missed  " + missedTargets.length);
+    for (const result of missedTargets) {
+      lines.push(
+        `  ${relativeDisplay(result.sourcePath)}: could not encode below the target size`,
+      );
+    }
+  }
 
   if (
     report.referenceFilesScanned > 0 ||
