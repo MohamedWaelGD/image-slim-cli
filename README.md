@@ -185,20 +185,20 @@ combined with `--overwrite`.
 
 ### Encoding and Resizing
 
-| Input              | Value                                | Default    | Description                                                                 |
-| ------------------ | ------------------------------------ | ---------- | --------------------------------------------------------------------------- |
+| Input              | Value                                        | Default    | Description                                                                 |
+| ------------------ | -------------------------------------------- | ---------- | --------------------------------------------------------------------------- |
 | `--format`         | `original`, `jpeg`, `png`, `webp`, or `avif` | `original` | Selects the output format.                                                  |
-| `--quality`        | `1`-`100`                            | `82`       | Sets lossy encoding quality.                                                |
-| `--min-quality`    | `1`-`100`                            | `40`       | Lowest quality used when searching for a target size.                       |
-| `--target-size`    | Size such as `500kb` or `1mb`        | Unset      | Searches for an encoding that stays under the target when possible.         |
-| `--max-width`      | Pixels                               | Unset      | Limits output width. Smaller images are not enlarged by default.            |
-| `--max-height`     | Pixels                               | Unset      | Limits output height.                                                       |
-| `--allow-upscale`  | Boolean flag                         | `false`    | Allows images to be enlarged to meet dimensions.                            |
-| `--background`     | Color                                | `#ffffff`  | Background used when transparent images are converted to JPEG.              |
-| `--min-savings`    | Percentage                           | `5`        | Requires this minimum reduction before replacing or writing an output.      |
-| `--skip-if-larger` | Boolean flag                         | `true`     | Skips output when it is not smaller than the source.                        |
-| `--allow-larger`   | Boolean flag                         | `false`    | Accepts an output even when it is larger. Disables skip-if-larger behavior. |
-| `--concurrency`    | Positive number, at most `64`        | `2`        | Maximum number of active image jobs.                                        |
+| `--quality`        | `1`-`100`                                    | `82`       | Sets lossy encoding quality.                                                |
+| `--min-quality`    | `1`-`100`                                    | `40`       | Lowest quality used when searching for a target size.                       |
+| `--target-size`    | Size such as `500kb` or `1mb`                | Unset      | Searches for an encoding that stays under the target when possible.         |
+| `--max-width`      | Pixels                                       | Unset      | Limits output width. Smaller images are not enlarged by default.            |
+| `--max-height`     | Pixels                                       | Unset      | Limits output height.                                                       |
+| `--allow-upscale`  | Boolean flag                                 | `false`    | Allows images to be enlarged to meet dimensions.                            |
+| `--background`     | Color                                        | `#ffffff`  | Background used when transparent images are converted to JPEG.              |
+| `--min-savings`    | Percentage                                   | `5`        | Requires this minimum reduction before replacing or writing an output.      |
+| `--skip-if-larger` | Boolean flag                                 | `true`     | Skips output when it is not smaller than the source.                        |
+| `--allow-larger`   | Boolean flag                                 | `false`    | Accepts an output even when it is larger. Disables skip-if-larger behavior. |
+| `--concurrency`    | Positive number, at most `64`                | `2`        | Maximum number of active image jobs.                                        |
 
 [Back to contents](#contents)
 
@@ -211,7 +211,7 @@ combined with `--overwrite`.
 | `--dry-run`             | Boolean flag | `false`  | Encodes and reports without writing files.                                                  |
 | `--check`               | Boolean flag | `false`  | Checks assets without writing files; implies dry-run behavior.                              |
 | `--fail-on-unoptimized` | Boolean flag | `false`  | Returns exit code `1` when a check finds assets that need optimization. Requires `--check`. |
-| `--fail-on-target-size` | Boolean flag | `false`  | Returns exit code `1` if any encoded output exceeds `--target-size`.                   |
+| `--fail-on-target-size` | Boolean flag | `false`  | Returns exit code `1` if any encoded output exceeds `--target-size`.                        |
 
 `--keep-metadata` and `--strip-metadata` cannot be combined. Likewise,
 `--allow-larger` and `--skip-if-larger` cannot be combined explicitly.
@@ -220,12 +220,12 @@ combined with `--overwrite`.
 
 ### Reference Updates
 
-| Input                 | Value                    | Default                             | Description                                                                     |
-| --------------------- | ------------------------ | ----------------------------------- | ------------------------------------------------------------------------------- |
+| Input                 | Value                    | Default                             | Description                                                                         |
+| --------------------- | ------------------------ | ----------------------------------- | ----------------------------------------------------------------------------------- |
 | `--update-references` | Boolean flag             | `false`                             | Updates static image references in HTML, CSS, JS, TS, Vue, Astro, and Svelte files. |
-| `--references`        | Directory; repeatable    | None                                | Roots to scan for source references.                                            |
-| `--reference-include` | Glob pattern; repeatable | Supported source files              | Includes matching reference files.                                              |
-| `--reference-exclude` | Glob pattern; repeatable | Generated, minified, and test files | Excludes matching reference files.                                              |
+| `--references`        | Directory; repeatable    | None                                | Roots to scan for source references.                                                |
+| `--reference-include` | Glob pattern; repeatable | Supported source files              | Includes matching reference files.                                                  |
+| `--reference-exclude` | Glob pattern; repeatable | Generated, minified, and test files | Excludes matching reference files.                                                  |
 
 Reference updates scan HTML, CSS, JavaScript, TypeScript, Vue, Astro, and Svelte
 files. They are conservative: a reference is rewritten only when it maps to
@@ -452,7 +452,7 @@ reference changes, unresolved references, and duration.
 | ----: | -------------------------------------------------------------------- |
 |   `0` | Successful optimization, check, help, or version output.             |
 |   `1` | `--check --fail-on-unoptimized` found assets that need optimization. |
-|   `1` | `--fail-on-target-size` found an output above the requested target.   |
+|   `1` | `--fail-on-target-size` found an output above the requested target.  |
 |   `2` | Invalid options or command usage.                                    |
 |   `3` | Processing, configuration, or filesystem failure.                    |
 | `130` | Interrupted with Ctrl+C or another abort signal.                     |

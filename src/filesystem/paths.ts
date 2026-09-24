@@ -23,7 +23,9 @@ export function normalizeExtension(value: string): string {
 }
 
 export function normalizeExtensions(values: string[] | undefined): string[] {
-  return (values ?? ["jpg", "jpeg", "png", "webp", "avif"]).map(normalizeExtension);
+  return (values ?? ["jpg", "jpeg", "png", "webp", "avif"]).map(
+    normalizeExtension,
+  );
 }
 
 export function commonPath(paths: string[]): string {

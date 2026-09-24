@@ -2,7 +2,13 @@ import { ImageSlimError } from "../errors/image-slim-error";
 import { MAX_CONCURRENCY } from "./defaults";
 import type { ImageFormat, ImageSlimConfig } from "../types/public";
 
-const FORMATS = new Set<ImageFormat>(["original", "jpeg", "png", "webp", "avif"]);
+const FORMATS = new Set<ImageFormat>([
+  "original",
+  "jpeg",
+  "png",
+  "webp",
+  "avif",
+]);
 
 function assertStringArray(name: string, value: unknown): void {
   if (
